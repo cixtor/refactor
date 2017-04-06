@@ -58,3 +58,28 @@ func NewRefactor(oldtext string, newtext string, filelist []string) *Refactor {
 		Filelist: filelist,
 	}
 }
+
+func (r *Refactor) Execute() error {
+	if r.Oldtext == r.Newtext {
+		return errors.New("Old and new text are the same")
+	}
+
+	if len(r.Filelist) == 2 {
+		r.Filelist = r.FindFiles()
+	}
+
+	/* discard the first two elemnets in the list */
+	r.Filelist = append([]string{}, r.Filelist[2:]...)
+
+	r.GrepDirectory()
+
+	if len(r.Matches) == 0 {
+		return errors.New("Nothing to refactor")
+	}
+
+	r.PrintMatches()
+
+	r.ReplaceMatches()
+
+	return nil
+}
