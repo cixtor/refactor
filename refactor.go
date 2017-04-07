@@ -83,3 +83,15 @@ func (r *Refactor) Execute() error {
 
 	return nil
 }
+
+func (r *Refactor) FindFiles() []string {
+	filelist := []string{".", ".."}
+	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if path[0] == '.' {
+			return nil
+		}
+		filelist = append(filelist, path)
+		return nil
+	})
+	return filelist
+}
