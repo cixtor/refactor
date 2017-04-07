@@ -95,3 +95,50 @@ func (r *Refactor) FindFiles() []string {
 	})
 	return filelist
 }
+
+func (r *Refactor) GrepDirectory() {
+	var wg sync.WaitGroup
+	wg.Add(len(r.Filelist))
+	for _, filename := range r.Filelist {
+		go r.InspectFile(&wg, filename)
+	}
+	wg.Wait()
+}
+
+func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
+	file, err := os.Open(filename)
+
+	if err != nil {
+		fmt.Println(filename, err)
+		return
+	}
+
+	defer func() {
+		file.Close()
+		wg.Done()
+	}()
+
+	var counter int
+	var content string
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		content = scanner.Text()
+		counter++ /* line number */
+
+		if strings.Contains(content, r.Oldtext) {
+			r.Lock()
+			r.Matches = append(r.Matches, Match{
+				Filename:   filename,
+				LineText:   content,
+				LineNumber: counter,
+				GrepFormat: fmt.Sprintf("%s:%d", filename, counter),
+			})
+			if !inArray(r.Uniques, filename) {
+				r.Uniques = append(r.Uniques, filename)
+			}
+			r.Unlock()
+		}
+	}
+}
