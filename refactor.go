@@ -142,3 +142,32 @@ func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
 		}
 	}
 }
+
+func (r *Refactor) PrintMatches() {
+	var longest int
+	var padding string
+	var colored string
+
+	for _, match := range r.Matches {
+		if len(match.GrepFormat) > longest {
+			longest = len(match.GrepFormat)
+		}
+	}
+
+	fmt.Println("@ Refactoring Matches")
+
+	for _, match := range r.Matches {
+		padding = strings.Repeat("\x20", longest-len(match.GrepFormat))
+
+		colored = strings.Replace(match.LineText,
+			r.Oldtext, /* text that will be replaced */
+			"\x1b[0;34m"+r.Oldtext+"\x1b[0m",
+			-1)
+
+		fmt.Printf("  %s:\x1b[0;31m%d\x1b[0m%s | %s\n",
+			match.Filename,
+			match.LineNumber,
+			padding,
+			colored)
+	}
+}
