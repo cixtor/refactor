@@ -171,3 +171,51 @@ func (r *Refactor) PrintMatches() {
 			colored)
 	}
 }
+
+func (r *Refactor) ReplaceMatches() {
+	var answer string
+	fmt.Printf("@ Found %d occurrences; continue? [y/n] ", len(r.Matches))
+	fmt.Scanf("%s", &answer) /* read user input to continue operation */
+
+	if answer != "y" {
+		fmt.Println("@ Canceling Refactoring")
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(r.Uniques))
+	for _, filename := range r.Uniques {
+		go r.ModifyFileContent(&wg, filename)
+	}
+	wg.Wait()
+
+	fmt.Println("@ Finished")
+}
+
+func (r *Refactor) ModifyFileContent(wg *sync.WaitGroup, filename string) {
+	defer wg.Done()
+
+	read, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		fmt.Println("  Error refactoring", filename+";", err)
+		return
+	}
+
+	content := strings.Replace(string(read), r.Oldtext, r.Newtext, -1)
+
+	if err := ioutil.WriteFile(filename, []byte(content), 0); err != nil {
+		fmt.Println("  Error writing", filename+";", err)
+	}
+
+	fmt.Printf("  \x1b[0;32mOK\x1b[0m %s\n", filename)
+}
+
+func inArray(haystack []string, needle string) bool {
+	for _, text := range haystack {
+		if text == needle {
+			return true
+		}
+	}
+	return false
+}
