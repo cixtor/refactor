@@ -12,6 +12,7 @@ import (
 	"sync"
 )
 
+// Refactor defines the interface to process the files.
 type Refactor struct {
 	sync.Mutex
 	Matches  []Match
@@ -21,6 +22,7 @@ type Refactor struct {
 	Filelist []string
 }
 
+// Match defines the structure of one single result.
 type Match struct {
 	Filename   string
 	LineText   string
@@ -51,6 +53,7 @@ func main() {
 	}
 }
 
+// NewRefactor creates an instance of the Refactor interface.
 func NewRefactor(oldtext string, newtext string, filelist []string) *Refactor {
 	return &Refactor{
 		Oldtext:  oldtext,
@@ -59,9 +62,15 @@ func NewRefactor(oldtext string, newtext string, filelist []string) *Refactor {
 	}
 }
 
+// Execute runs the file scanner and prints the results.
 func (r *Refactor) Execute() error {
 	if r.Oldtext == r.Newtext {
 		return errors.New("Old and new text are the same")
+	}
+
+	if len(r.Filelist) < 2 {
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	if len(r.Filelist) == 2 {
@@ -84,6 +93,7 @@ func (r *Refactor) Execute() error {
 	return nil
 }
 
+// FindFiles walks through the directory tree and returns the files.
 func (r *Refactor) FindFiles() []string {
 	filelist := []string{".", ".."}
 	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
@@ -96,6 +106,7 @@ func (r *Refactor) FindFiles() []string {
 	return filelist
 }
 
+// GrepDirectory inspects the content of every file in the directory tree.
 func (r *Refactor) GrepDirectory() {
 	var wg sync.WaitGroup
 	wg.Add(len(r.Filelist))
@@ -105,6 +116,7 @@ func (r *Refactor) GrepDirectory() {
 	wg.Wait()
 }
 
+// InspectFile reads the content of a file and finds the query.
 func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
 	file, err := os.Open(filename)
 
@@ -143,6 +155,7 @@ func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
 	}
 }
 
+// PrintMatches sends the results to the standard output.
 func (r *Refactor) PrintMatches() {
 	var longest int
 	var padding string
@@ -172,6 +185,7 @@ func (r *Refactor) PrintMatches() {
 	}
 }
 
+// ReplaceMatches rewrites the content of the files.
 func (r *Refactor) ReplaceMatches() {
 	var answer string
 	fmt.Printf("@ Found %d occurrences; continue? [y/n] ", len(r.Matches))
@@ -192,6 +206,7 @@ func (r *Refactor) ReplaceMatches() {
 	fmt.Println("@ Finished")
 }
 
+// ModifyFileContent changes the content of the specified file.
 func (r *Refactor) ModifyFileContent(wg *sync.WaitGroup, filename string) {
 	defer wg.Done()
 
