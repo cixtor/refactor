@@ -109,15 +109,17 @@ func (r *Refactor) FindFiles() []string {
 // GrepDirectory inspects the content of every file in the directory tree.
 func (r *Refactor) GrepDirectory() {
 	var wg sync.WaitGroup
+	sema := make(chan int, 50)
 	wg.Add(len(r.Filelist))
 	for _, filename := range r.Filelist {
-		go r.InspectFile(&wg, filename)
+		go r.InspectFile(&wg, sema, filename)
 	}
 	wg.Wait()
 }
 
 // InspectFile reads the content of a file and finds the query.
-func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
+func (r *Refactor) InspectFile(wg *sync.WaitGroup, sema chan int, filename string) {
+	sema <- 1
 	file, err := os.Open(filename)
 
 	if err != nil {
@@ -127,6 +129,7 @@ func (r *Refactor) InspectFile(wg *sync.WaitGroup, filename string) {
 
 	defer func() {
 		file.Close()
+		<-sema
 		wg.Done()
 	}()
 
