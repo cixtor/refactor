@@ -120,10 +120,25 @@ func (r *Refactor) GrepDirectory() {
 // InspectFile reads the content of a file and finds the query.
 func (r *Refactor) InspectFile(wg *sync.WaitGroup, sema chan int, filename string) {
 	sema <- 1
+
+	fi, err := os.Lstat(filename)
+
+	if err != nil {
+		fmt.Println("os.lstat:", filename, err)
+		return
+	}
+
+	/* skip symlink files; they cannot be opened */
+	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
+		<-sema
+		wg.Done()
+		return
+	}
+
 	file, err := os.Open(filename)
 
 	if err != nil {
-		fmt.Println(filename, err)
+		fmt.Println("os.open:", filename, err)
 		return
 	}
 
