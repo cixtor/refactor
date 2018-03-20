@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,13 +97,15 @@ func (r *Refactor) Execute() error {
 // FindFiles walks through the directory tree and returns the files.
 func (r *Refactor) FindFiles() []string {
 	filelist := []string{".", ".."}
-	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if path[0] == '.' {
 			return nil
 		}
 		filelist = append(filelist, path)
 		return nil
-	})
+	}); err != nil {
+		log.Println("file.walk;", err)
+	}
 	return filelist
 }
 
@@ -143,9 +146,11 @@ func (r *Refactor) InspectFile(wg *sync.WaitGroup, sema chan int, filename strin
 	}
 
 	defer func() {
-		file.Close()
 		<-sema
 		wg.Done()
+		if err := file.Close(); err != nil {
+			log.Println("file.close;", err)
+		}
 	}()
 
 	var counter int
@@ -206,8 +211,14 @@ func (r *Refactor) PrintMatches() {
 // ReplaceMatches rewrites the content of the files.
 func (r *Refactor) ReplaceMatches() {
 	var answer string
+
 	fmt.Printf("@ Found %d occurrences; continue? [y/n] ", len(r.Matches))
-	fmt.Scanf("%s", &answer) /* read user input to continue operation */
+
+	if _, err := fmt.Scanf("%s", &answer); err != nil {
+		/* read user input to continue operation */
+		log.Println("fmt.scanf;", err)
+		return
+	}
 
 	if answer != "y" {
 		fmt.Println("@ Canceling Refactoring")
