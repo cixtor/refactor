@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -47,11 +46,95 @@ func main() {
 
 	flag.Parse()
 
-	app := NewRefactor(flag.Arg(0), flag.Arg(1), flag.Args())
-
-	if err := app.Execute(); err != nil {
-		fmt.Println(err.Error())
+	// need at least two arguments, 1) the old text to search, and 2) the new
+	// text to replace the old one.
+	if flag.NArg() < 2 {
+		flag.Usage()
+		os.Exit(1)
 	}
+
+	oldText := flag.Arg(0)
+	newText := flag.Arg(1)
+
+	if oldText == newText {
+		fmt.Println("noop (A == B)")
+		os.Exit(1)
+	}
+
+	// Assume the remaining program arguments are a list of files to search and
+	// replace. Ignore the first two indeces in the array as they are the OLD
+	// and NEW text to search and replace, respectively.
+	files := flag.Args()[2:]
+
+	// If the total number of program arguments provided by the user is two (2)
+	// then the list of files will be empty, in which case we will need to run
+	// a recursive file search.
+	if flag.NArg() == 2 {
+		files = findFilesRecursively()
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan bool, 50)
+	result := make(chan SearchResult)
+
+	wg.Add(len(files))
+
+	for _, filename := range files {
+		go searchThisFile(sem, &wg, result, filename, oldText)
+	}
+
+	go func() {
+		wg.Wait()
+		close(result)
+	}()
+
+	for res := range result {
+		if len(res.Findings) == 0 {
+			continue
+		}
+		// wg.Add(1)
+		// go modifyThisFile(sem, &wg, res)
+		for _, item := range res.Findings {
+			fmt.Printf(
+				"\x1b[0;35m%s\x1b[0m:\x1b[0;32m%d\x1b[0m:%s\n",
+				res.Filename,
+				item.LineNumber,
+				strings.Replace(
+					item.OriginalText,
+					oldText,
+					"\x1b[1;31m"+oldText+"\x1b[0m",
+					item.Occurrences,
+				),
+			)
+		}
+	}
+
+	// wg.Wait()
+
+	// searchAndReplace(
+	// 	files,
+	// flag.Arg(0),
+	// flag.Arg(1),
+	// )
+
+	// if len(r.Matches) == 0 {
+	// 	return errors.New("Nothing to refactor")
+	// }
+
+	// r.PrintMatches()
+
+	// r.ReplaceMatches()
+}
+
+type SearchResult struct {
+	Filename string
+	Findings []Finding
+}
+
+type Finding struct {
+	LineNumber   int
+	Occurrences  int
+	OriginalText string
 }
 
 // NewRefactor creates an instance of the Refactor interface.
@@ -63,66 +146,28 @@ func NewRefactor(oldtext string, newtext string, filelist []string) *Refactor {
 	}
 }
 
-// Execute runs the file scanner and prints the results.
-func (r *Refactor) Execute() error {
-	if r.Oldtext == r.Newtext {
-		return errors.New("Old and new text are the same")
-	}
-
-	if len(r.Filelist) < 2 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if len(r.Filelist) == 2 {
-		r.Filelist = r.FindFiles()
-	}
-
-	/* discard the first two elemnets in the list */
-	r.Filelist = append([]string{}, r.Filelist[2:]...)
-
-	r.GrepDirectory()
-
-	if len(r.Matches) == 0 {
-		return errors.New("Nothing to refactor")
-	}
-
-	r.PrintMatches()
-
-	r.ReplaceMatches()
-
-	return nil
-}
-
-// FindFiles walks through the directory tree and returns the files.
-func (r *Refactor) FindFiles() []string {
-	filelist := []string{".", ".."}
-	if err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if path[0] == '.' {
+func findFilesRecursively() []string {
+	filelist := []string{}
+	if err := filepath.Walk(".", func(s string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
 			return nil
 		}
-		filelist = append(filelist, path)
+		filelist = append(filelist, s)
 		return nil
 	}); err != nil {
-		log.Println("file.walk;", err)
+		fmt.Println("filepath.Walk", err)
 	}
 	return filelist
 }
 
-// GrepDirectory inspects the content of every file in the directory tree.
-func (r *Refactor) GrepDirectory() {
-	var wg sync.WaitGroup
-	sema := make(chan int, 50)
-	wg.Add(len(r.Filelist))
-	for _, filename := range r.Filelist {
-		go r.InspectFile(&wg, sema, filename)
-	}
-	wg.Wait()
-}
-
-// InspectFile reads the content of a file and finds the query.
-func (r *Refactor) InspectFile(wg *sync.WaitGroup, sema chan int, filename string) {
-	sema <- 1
+// searchThisFile reads the content of a file and finds the query.
+func searchThisFile(sem chan bool, wg *sync.WaitGroup, result chan SearchResult, filename string, query string) {
+	sem <- true
+	defer func() { <-sem }()
+	defer func() { wg.Done() }()
 
 	fi, err := os.Lstat(filename)
 
@@ -131,51 +176,44 @@ func (r *Refactor) InspectFile(wg *sync.WaitGroup, sema chan int, filename strin
 		return
 	}
 
-	/* skip symlink files; they cannot be opened */
+	// skip files acting as symbolic links.
 	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-		<-sema
-		wg.Done()
 		return
 	}
 
 	file, err := os.Open(filename)
 
 	if err != nil {
-		fmt.Println("os.open:", filename, err)
+		fmt.Println("os.Open", filename, err)
 		return
 	}
 
 	defer func() {
-		<-sema
-		wg.Done()
 		if err := file.Close(); err != nil {
-			log.Println("file.close;", err)
+			fmt.Println("file.Close", err)
 		}
 	}()
 
-	var counter int
-	var content string
+	var row int
+	var line string
+	var findings []Finding
 
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
-		content = scanner.Text()
-		counter++ /* line number */
+		row++ /* line number */
+		line = scanner.Text()
 
-		if strings.Contains(content, r.Oldtext) {
-			r.Lock()
-			r.Matches = append(r.Matches, Match{
-				Filename:   filename,
-				LineText:   content,
-				LineNumber: counter,
-				GrepFormat: fmt.Sprintf("%s:%d", filename, counter),
+		if n := strings.Count(line, query); n > 0 {
+			findings = append(findings, Finding{
+				LineNumber:   row,
+				Occurrences:  n,
+				OriginalText: line,
 			})
-			if !inArray(r.Uniques, filename) {
-				r.Uniques = append(r.Uniques, filename)
-			}
-			r.Unlock()
 		}
 	}
+
+	result <- SearchResult{Filename: filename, Findings: findings}
 }
 
 // PrintMatches sends the results to the standard output.
