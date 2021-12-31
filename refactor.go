@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -209,6 +211,15 @@ func modifyThisFile(sem chan bool, wg *sync.WaitGroup, res SearchResult, oldText
 		return
 	}
 
+	content, err := ioutil.ReadFile(res.Filename)
+
+	if err != nil {
+		fmt.Println("ioutil.ReadFile", res.Filename, err)
+		return
+	}
+
+	var totalOccurrences int
+
 	for _, item := range res.Findings {
 		fmt.Printf(
 			"\x1b[0;35m%s\x1b[0m:\x1b[0;32m%d\x1b[0m:%s\n",
@@ -221,20 +232,12 @@ func modifyThisFile(sem chan bool, wg *sync.WaitGroup, res SearchResult, oldText
 				item.Occurrences,
 			),
 		)
+		totalOccurrences += item.Occurrences
 	}
 
-	// read, err := ioutil.ReadFile(filename)
+	content = bytes.Replace(content, []byte(oldText), []byte(newText), totalOccurrences)
 
-	// if err != nil {
-	// 	fmt.Println("  Error refactoring", filename+";", err)
-	// 	return
-	// }
-
-	// content := strings.Replace(string(read), r.Oldtext, r.Newtext, -1)
-
-	// if err := ioutil.WriteFile(filename, []byte(content), 0); err != nil {
-	// 	fmt.Println("  Error writing", filename+";", err)
-	// }
-
-	// fmt.Printf("  \x1b[0;32mOK\x1b[0m %s\n", filename)
+	if err := ioutil.WriteFile(res.Filename, content, 0644); err != nil {
+		fmt.Println("ioutil.WriteFile", res.Filename, err)
+	}
 }
