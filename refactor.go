@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +28,11 @@ type Match struct {
 	LineNumber int
 }
 
+var flagCommitChanges bool
+
 func main() {
+	flag.BoolVar(&flagCommitChanges, "x", false, "Execute the replacement operation (default is preview-only)")
+
 	flag.Usage = func() {
 		fmt.Println("Refactor")
 		fmt.Println()
@@ -92,38 +94,13 @@ func main() {
 		if len(res.Findings) == 0 {
 			continue
 		}
-		// wg.Add(1)
-		// go modifyThisFile(sem, &wg, res)
-		for _, item := range res.Findings {
-			fmt.Printf(
-				"\x1b[0;35m%s\x1b[0m:\x1b[0;32m%d\x1b[0m:%s\n",
-				res.Filename,
-				item.LineNumber,
-				strings.Replace(
-					item.OriginalText,
-					oldText,
-					"\x1b[1;31m"+oldText+"\x1b[0m",
-					item.Occurrences,
-				),
-			)
-		}
+
+		wg.Add(1)
+
+		go modifyThisFile(sem, &wg, res, oldText, newText)
 	}
 
-	// wg.Wait()
-
-	// searchAndReplace(
-	// 	files,
-	// flag.Arg(0),
-	// flag.Arg(1),
-	// )
-
-	// if len(r.Matches) == 0 {
-	// 	return errors.New("Nothing to refactor")
-	// }
-
-	// r.PrintMatches()
-
-	// r.ReplaceMatches()
+	wg.Wait()
 }
 
 type SearchResult struct {
@@ -135,15 +112,6 @@ type Finding struct {
 	LineNumber   int
 	Occurrences  int
 	OriginalText string
-}
-
-// NewRefactor creates an instance of the Refactor interface.
-func NewRefactor(oldtext string, newtext string, filelist []string) *Refactor {
-	return &Refactor{
-		Oldtext:  oldtext,
-		Newtext:  newtext,
-		Filelist: filelist,
-	}
 }
 
 func findFilesRecursively() []string {
@@ -166,8 +134,8 @@ func findFilesRecursively() []string {
 // searchThisFile reads the content of a file and finds the query.
 func searchThisFile(sem chan bool, wg *sync.WaitGroup, result chan SearchResult, filename string, query string) {
 	sem <- true
+	defer wg.Done()
 	defer func() { <-sem }()
-	defer func() { wg.Done() }()
 
 	fi, err := os.Lstat(filename)
 
@@ -216,88 +184,57 @@ func searchThisFile(sem chan bool, wg *sync.WaitGroup, result chan SearchResult,
 	result <- SearchResult{Filename: filename, Findings: findings}
 }
 
-// PrintMatches sends the results to the standard output.
-func (r *Refactor) PrintMatches() {
-	var longest int
-	var padding string
-	var colored string
-
-	for _, match := range r.Matches {
-		if len(match.GrepFormat) > longest {
-			longest = len(match.GrepFormat)
-		}
-	}
-
-	fmt.Println("@ Refactoring Matches")
-
-	for _, match := range r.Matches {
-		padding = strings.Repeat("\x20", longest-len(match.GrepFormat))
-
-		colored = strings.Replace(match.LineText,
-			r.Oldtext, /* text that will be replaced */
-			"\x1b[0;34m"+r.Oldtext+"\x1b[0m",
-			-1)
-
-		fmt.Printf("  %s:\x1b[0;31m%d\x1b[0m%s | %s\n",
-			match.Filename,
-			match.LineNumber,
-			padding,
-			colored)
-	}
-}
-
-// ReplaceMatches rewrites the content of the files.
-func (r *Refactor) ReplaceMatches() {
-	var answer string
-
-	fmt.Printf("@ Found %d occurrences; continue? [y/n] ", len(r.Matches))
-
-	if _, err := fmt.Scanf("%s", &answer); err != nil {
-		/* read user input to continue operation */
-		log.Println("fmt.scanf;", err)
-		return
-	}
-
-	if answer != "y" {
-		fmt.Println("@ Canceling Refactoring")
-		return
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(r.Uniques))
-	for _, filename := range r.Uniques {
-		go r.ModifyFileContent(&wg, filename)
-	}
-	wg.Wait()
-
-	fmt.Println("@ Finished")
-}
-
-// ModifyFileContent changes the content of the specified file.
-func (r *Refactor) ModifyFileContent(wg *sync.WaitGroup, filename string) {
+// modifyThisFile changes the content of the specified file.
+func modifyThisFile(sem chan bool, wg *sync.WaitGroup, res SearchResult, oldText string, newText string) {
+	sem <- true
 	defer wg.Done()
+	defer func() { <-sem }()
 
-	read, err := ioutil.ReadFile(filename)
+	// preview changes and exit.
+	if !flagCommitChanges {
+		for _, item := range res.Findings {
+			fmt.Printf(
+				"\x1b[0;35m%s\x1b[0m:\x1b[0;32m%d\x1b[0m:%s\n",
+				res.Filename,
+				item.LineNumber,
+				strings.Replace(
+					item.OriginalText,
+					oldText,
+					"\x1b[1;31m"+oldText+"\x1b[0m",
+					item.Occurrences,
+				),
+			)
+		}
 
-	if err != nil {
-		fmt.Println("  Error refactoring", filename+";", err)
 		return
 	}
 
-	content := strings.Replace(string(read), r.Oldtext, r.Newtext, -1)
-
-	if err := ioutil.WriteFile(filename, []byte(content), 0); err != nil {
-		fmt.Println("  Error writing", filename+";", err)
+	for _, item := range res.Findings {
+		fmt.Printf(
+			"\x1b[0;35m%s\x1b[0m:\x1b[0;32m%d\x1b[0m:%s\n",
+			res.Filename,
+			item.LineNumber,
+			strings.Replace(
+				item.OriginalText,
+				oldText,
+				"\x1b[0;9m"+oldText+"\x1b[0m\x1b[1;34m"+newText+"\x1b[0m",
+				item.Occurrences,
+			),
+		)
 	}
 
-	fmt.Printf("  \x1b[0;32mOK\x1b[0m %s\n", filename)
-}
+	// read, err := ioutil.ReadFile(filename)
 
-func inArray(haystack []string, needle string) bool {
-	for _, text := range haystack {
-		if text == needle {
-			return true
-		}
-	}
-	return false
+	// if err != nil {
+	// 	fmt.Println("  Error refactoring", filename+";", err)
+	// 	return
+	// }
+
+	// content := strings.Replace(string(read), r.Oldtext, r.Newtext, -1)
+
+	// if err := ioutil.WriteFile(filename, []byte(content), 0); err != nil {
+	// 	fmt.Println("  Error writing", filename+";", err)
+	// }
+
+	// fmt.Printf("  \x1b[0;32mOK\x1b[0m %s\n", filename)
 }
