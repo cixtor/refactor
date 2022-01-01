@@ -35,21 +35,22 @@ var flagNewText string
 var flagCommitChanges bool
 
 func main() {
-	flag.StringVar(&flagOldText, "a", "", "Old text to search")
+	flag.StringVar(&flagOldText, "a", "", "Old text to search in all files")
 	flag.StringVar(&flagNewText, "b", "", "New text to replace [OLD] with")
 	flag.BoolVar(&flagCommitChanges, "x", false, "Execute the replacement operation (default is preview-only)")
 
 	flag.Usage = func() {
-		fmt.Println("Refactor")
-		fmt.Println()
-		fmt.Println("Searches all the files in the current directory containing")
-		fmt.Println("the [OLD] and replacement every occurrence with [NEW]. Be ")
-		fmt.Println("aware that forward slashes must be escaped in both cases.")
-		fmt.Println()
-		fmt.Println("Usage:")
-		fmt.Println("  refactor -a [OLD] -b [NEW]")
-		fmt.Println("  refactor -a [OLD] -b [NEW] -x")
-		fmt.Println("  refactor -a [OLD] -b [NEW] -x [FILES]")
+		fmt.Print(`refactor
+
+search [OLD_TEXT] in all the specified files (if any) or all the files in the
+current folder (recursively) and replace with [NEW_TEXT] in place. By default,
+the program simply prints the files and occurrences that will be replace but
+does not execute the replacement operation until the flag -x is also specified.
+
+usage:
+`)
+
+		flag.PrintDefaults()
 		os.Exit(2)
 	}
 
