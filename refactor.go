@@ -30,50 +30,42 @@ type Match struct {
 	LineNumber int
 }
 
+var flagOldText string
+var flagNewText string
 var flagCommitChanges bool
 
 func main() {
+	flag.StringVar(&flagOldText, "a", "", "Old text to search")
+	flag.StringVar(&flagNewText, "b", "", "New text to replace [OLD] with")
 	flag.BoolVar(&flagCommitChanges, "x", false, "Execute the replacement operation (default is preview-only)")
 
 	flag.Usage = func() {
 		fmt.Println("Refactor")
 		fmt.Println()
 		fmt.Println("Searches all the files in the current directory containing")
-		fmt.Println("the [old] and replacement every occurrence with [new]. Be ")
+		fmt.Println("the [OLD] and replacement every occurrence with [NEW]. Be ")
 		fmt.Println("aware that forward slashes must be escaped in both cases.")
 		fmt.Println()
 		fmt.Println("Usage:")
-		fmt.Println("  refactor [old-text] [new-text]")
-		fmt.Println("  refactor [old-text] [new-text] [files]")
+		fmt.Println("  refactor -a [OLD] -b [NEW]")
+		fmt.Println("  refactor -a [OLD] -b [NEW] -x")
+		fmt.Println("  refactor -a [OLD] -b [NEW] -x [FILES]")
 		os.Exit(2)
 	}
 
 	flag.Parse()
 
-	// need at least two arguments, 1) the old text to search, and 2) the new
-	// text to replace the old one.
-	if flag.NArg() < 2 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	oldText := flag.Arg(0)
-	newText := flag.Arg(1)
-
-	if oldText == newText {
+	if flagOldText == flagNewText {
 		fmt.Println("noop (A == B)")
 		os.Exit(1)
 	}
 
-	// Assume the remaining program arguments are a list of files to search and
-	// replace. Ignore the first two indeces in the array as they are the OLD
-	// and NEW text to search and replace, respectively.
-	files := flag.Args()[2:]
+	files := flag.Args()
 
-	// If the total number of program arguments provided by the user is two (2)
-	// then the list of files will be empty, in which case we will need to run
-	// a recursive file search.
-	if flag.NArg() == 2 {
+	// If the user did not provide any specific files to search and replace,
+	// then assume they want to search and replace among all the files in the
+	// current folder (recursively).
+	if flag.NArg() == 0 {
 		files = findFilesRecursively()
 	}
 
@@ -84,7 +76,7 @@ func main() {
 	wg.Add(len(files))
 
 	for _, filename := range files {
-		go searchThisFile(sem, &wg, result, filename, oldText)
+		go searchThisFile(sem, &wg, result, filename, flagOldText)
 	}
 
 	go func() {
@@ -99,7 +91,7 @@ func main() {
 
 		wg.Add(1)
 
-		go modifyThisFile(sem, &wg, res, oldText, newText)
+		go modifyThisFile(sem, &wg, res, flagOldText, flagNewText)
 	}
 
 	wg.Wait()
