@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,7 +203,7 @@ func modifyThisFile(sem chan bool, wg *sync.WaitGroup, res SearchResult, oldText
 		return
 	}
 
-	content, err := ioutil.ReadFile(res.Filename)
+	content, err := os.ReadFile(res.Filename)
 
 	if err != nil {
 		fmt.Println("ioutil.ReadFile", res.Filename, err)
@@ -230,7 +229,7 @@ func modifyThisFile(sem chan bool, wg *sync.WaitGroup, res SearchResult, oldText
 
 	content = bytes.Replace(content, []byte(oldText), []byte(newText), totalOccurrences)
 
-	if err := ioutil.WriteFile(res.Filename, content, 0644); err != nil {
+	if err := os.WriteFile(res.Filename, content, 0644); err != nil {
 		fmt.Println("ioutil.WriteFile", res.Filename, err)
 	}
 }
